@@ -10,23 +10,32 @@
 #   * on Windows, wait for the user to press the Enter key before exiting
 # v1.1
 #   * add missing imp import (do not affect Windows dist)
-
+# v2.0
+#   * display the cmd help in case of non 'OK' response from the BFBC2 server
+#   * login.hashed asks the user for its passwords, computes and sends the hash automatically
+#   * allow to define custom behavious for bfbc2 commands by defining function named after
+#       the pattern : bfbc2_<cmdBeforeDot>_<cmdAfterDot>
+#       ie: login.hashed -> bfbc2_login_hashed
 
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "1.1"
+__version__ = "2.0"
 
 
+import sys
 import string
+import re
 import cmd
 import socket
 import imp
 import readline
+import getpass
 from CommandConsole import *
 
 
 
 class Bfbc2Commander(cmd.Cmd):
     """BFBC2 command processor"""
+    identchars = cmd.IDENTCHARS + '.'
     _socket = None
     _bfbc2cmdList = []
     _cmdsHelp = {}
@@ -38,6 +47,7 @@ class Bfbc2Commander(cmd.Cmd):
         self._initAvailableCmds()
         
     def _initAvailableCmds(self):
+        """depending on the login status, build up the list of available commands"""
         words = self._sendBfbc2Cmd('help')
         if words[0] == 'OK':
             self._bfbc2cmdList = words[1:]
@@ -45,6 +55,7 @@ class Bfbc2Commander(cmd.Cmd):
             self._bfbc2cmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'version']
         
     def _sendBfbc2Cmd(self, command):
+        """send a command through the BFBC2 socket and returns the response's words"""
         words = shlex.split(command)
 
         if len(words) >= 1:
@@ -64,23 +75,67 @@ class Bfbc2Commander(cmd.Cmd):
             # The packet from the server should 
             # For now, we always respond with an "OK"
             if not isResponse:
-                print 'Received an unexpected request packet from server, ignored:'
+                print 'Received an unexpected request packet from server, ignored: %s' % (DecodePacket(packet),)
 
             #printPacket(DecodePacket(packet))
             return words
     
-
+    def postcmd(self, words, line):
+        """Hook method executed just after a command dispatch is finished.
+        If the 1st word received from the command is not 'OK', try to display
+        the command help
+        """
+        cmd, arg, line = self.parseline(line)        
+        if words and words[0] != 'OK':
+            try:
+                doc = self._cmdsHelp[cmd]
+                if doc:
+                    self.stdout.write("\n%s\n"%str(doc))
+                    return
+            except KeyError:
+                pass
+            
     def emptyline(self):
         pass
+
+    def onecmd(self, line):
+        """Interpret the argument as though it had been typed in response
+        to the prompt.
+
+        additionnaly to the usual 'do_<cmd>' also look for BFBC2 commands 
+        replacing the '.' by '_' for the function lookup.
+        i.e: vars.hardCore -> bfbc2_vars_hardCore
+        """
+        cmd, arg, line = self.parseline(line)
+        if not line:
+            return self.emptyline()
+        if cmd is None:
+            return self.default(line)
+        self.lastcmd = line
+        if cmd == '':
+            return self.default(line)
+        else:
+            try:
+                func = getattr(self, 'do_' + cmd)
+            except AttributeError:
+                try:
+                    bfbc2cmdPattern = re.compile('^([a-z0-9]+)\.([a-z0-9]+)$', re.IGNORECASE)
+                    m = bfbc2cmdPattern.match(cmd)
+                    if m:
+                        funcname = 'bfbc2_' + m.group(1) + '_' + m.group(2)
+                        func = getattr(self, funcname)
+                    else:
+                        return self.default(line)
+                except AttributeError:
+                    return self.default(line)
+            return func(arg)
         
     def default(self, line):
-        words = self._sendBfbc2Cmd(line)
-        print words
-        
-        if line.startswith(('login.plainText','logout')) and words[0]=='OK':
-            self._initAvailableCmds()
+        """what to do if no do_<cmd> an no bfbc2_<cmd> function are found"""
+        print self._sendBfbc2Cmd(line)
     
     def completenames(self, text, *ignored):
+        """command names completion. return a list of matching commands"""
         cmds = self._bfbc2cmdList
         if 'help' not in cmds:
             cmds.insert(0, 'help')
@@ -88,6 +143,7 @@ class Bfbc2Commander(cmd.Cmd):
 
     
     def do_help(self, arg):
+        """override default help command"""
         if arg:
             try:
                 doc = self._cmdsHelp[arg]
@@ -102,6 +158,39 @@ class Bfbc2Commander(cmd.Cmd):
         
     def do_EOF(self, arg):
         raise SystemExit
+        
+        
+    def bfbc2_login_plainText(self, arg):
+        words = self._sendBfbc2Cmd('login.plainText ' + arg)
+        print words
+        self._initAvailableCmds()
+        return words
+
+    def bfbc2_logout(self, arg):
+        words = self._sendBfbc2Cmd('logout ' + arg)
+        self._initAvailableCmds()
+        return words
+        
+    def bfbc2_login_hashed(self, arg):
+        if arg and len(arg.strip())>0:
+            words = self._sendBfbc2Cmd('login.hashed ' + arg)
+            print words
+            return words
+        else:
+            """ hashed authentication helper """
+            words = self._sendBfbc2Cmd('login.hashed')
+            print words
+            if words[0]=='OK':
+                salt = words[1].decode("hex")
+                pw = getpass.getpass()
+                passwordHash = generatePasswordHash(salt, pw)
+                passwordHashHexString = string.upper(passwordHash.encode("hex"))
+                print "login.hashed " + passwordHashHexString
+                words = self._sendBfbc2Cmd("login.hashed " + passwordHashHexString)
+                print words
+                self._initAvailableCmds()
+                return words
+        
 
 class DocumentedBfbc2Commander(Bfbc2Commander):
     _cmdsHelp = {
@@ -572,8 +661,6 @@ def main_is_frozen():
         
 def main():
     from getopt import getopt
-    import sys
-    import getpass
 
     print "BFBC2 Commander"
     serverSocket = None
@@ -689,6 +776,8 @@ if __name__ == '__main__':
     try:
         main()
     except SystemExit:
+        pass
+    except KeyboardInterrupt:
         pass
     except:
         traceback.print_exc()
