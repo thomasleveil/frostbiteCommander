@@ -8,14 +8,18 @@
 #   * fix bug when password is provided on the command line
 #   * cmd doc is now complete and updated from http://blogs.battlefield.ea.com/battlefield_bad_company/archive/2010/02/05/remote-administration-interface-for-bfbc2-pc.aspx## R7
 #   * on Windows, wait for the user to press the Enter key before exiting
+# v1.1
+#   * add missing imp import (do not affect Windows dist)
+
 
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "1.0"
+__version__ = "1.1"
 
 
 import string
 import cmd
 import socket
+import imp
 import readline
 from CommandConsole import *
 
