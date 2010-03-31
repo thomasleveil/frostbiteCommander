@@ -1,0 +1,8 @@
+requirements :
+ * MS Windows
+ * python 2.6
+ * py2exe - http://www.py2exe.org/
+ * pyreadline - http://ipython.scipy.org/Wiki/PyReadline/Intro
+ 
+build :
+ * python.exe setupPy2exe.py

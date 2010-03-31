@@ -1,0 +1,9 @@
+How to make a Windows setup program :
+=====================================
+
+Requirements :
+ * Ms Windows
+ * InnoSetup - http://www.jrsoftware.org/isdl.php (I recommand the 'QuickStart Pack')
+
+Instructions :
+ * compile installer.iss with InnoSetup compiler 
