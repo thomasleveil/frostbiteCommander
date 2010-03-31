@@ -10,7 +10,7 @@
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{5CA1C72F-72C2-4B61-AF76-9B2274186AA7}
 AppName=BFBC2Commander
-AppVerName=BFBC2Commander 2.0
+AppVerName=BFBC2Commander 3.0
 AppPublisher=BFBC2Commander
 AppPublisherURL=
 AppSupportURL=
@@ -24,13 +24,13 @@ SolidCompression=true
 InternalCompressLevel=normal
 DisableStartupPrompt=true
 SetupLogging=true
-VersionInfoVersion=2.0
+VersionInfoVersion=3.0
 VersionInfoDescription=BFBC2 Commander
 VersionInfoCopyright=
 AppCopyright=
-VersionInfoTextVersion=2.0
+VersionInfoTextVersion=3.0
 VersionInfoProductName=BFBC2Commander
-VersionInfoProductVersion=2.0
+VersionInfoProductVersion=3.0
 ExtraDiskSpaceRequired=5750520
 RestartIfNeededByRun=false
 PrivilegesRequired=none
@@ -64,11 +64,14 @@ Name: spanish; MessagesFile: compiler:Languages\Spanish.isl
 
 [Icons]
 Name: {group}\{cm:executable,bc2commander.exe}; Filename: {app}\bc2commander.exe; WorkingDir: {app}; Flags: dontcloseonexit; Comment: Run BFBC2 Commander
+Name: {group}\{cm:website,Website}; Filename: http://courgette.github.com/bfbc2Commander/; Comment: visit the BFBC2 Commander website
+Name: {group}\{cm:UninstallProgram,Uninstall}; Filename: {uninstallexe}
 
 [Dirs]
 
 [Files]
 Source: dist\*; DestDir: {app}; Flags: recursesubdirs
+
 
 
 
@@ -81,3 +84,4 @@ Name: {app}\*; Type: filesandordirs
 
 [CustomMessages]
 executable=BC2 Commander
+website=Website
