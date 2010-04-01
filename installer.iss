@@ -10,7 +10,7 @@
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{5CA1C72F-72C2-4B61-AF76-9B2274186AA7}
 AppName=BFBC2Commander
-AppVerName=BFBC2Commander 3.0
+AppVerName=BFBC2Commander 3.1
 AppPublisher=BFBC2Commander
 AppPublisherURL=
 AppSupportURL=
@@ -24,13 +24,13 @@ SolidCompression=true
 InternalCompressLevel=normal
 DisableStartupPrompt=true
 SetupLogging=true
-VersionInfoVersion=3.0
+VersionInfoVersion=3.1
 VersionInfoDescription=BFBC2 Commander
 VersionInfoCopyright=
 AppCopyright=
-VersionInfoTextVersion=3.0
+VersionInfoTextVersion=3.1
 VersionInfoProductName=BFBC2Commander
-VersionInfoProductVersion=3.0
+VersionInfoProductVersion=3.1
 ExtraDiskSpaceRequired=5750520
 RestartIfNeededByRun=false
 PrivilegesRequired=none
