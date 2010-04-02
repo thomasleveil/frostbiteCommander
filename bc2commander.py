@@ -22,10 +22,15 @@
 #   * display words sent to the BFBC2 server
 #   * provide arguments completion for commands expecting a boolean
 #   * refactor to make Bfbc2Commander_* class writting more conventional (regaring the cmd.Cmd documentation)
-#
+# v3.1
+#   * add R9 commands documentation
+#   * improve R8 commands documentation formatting
+# v3.2
+#   * displays command help if the return value is not 'OK' and not 'UnknownCommand'
+#   * add parameters completion for admin.listPlayers
 
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "3.1"
+__version__ = "3.2"
 
 
 import sys
@@ -34,6 +39,7 @@ import re
 import cmd
 import socket
 import imp
+import time
 import readline
 import getpass
 from CommandConsole import *
@@ -46,6 +52,9 @@ class Bfbc2Commander(cmd.Cmd):
     _socket = None
     _bfbc2cmdList = []
     _bfbc2UnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'version']
+    _connectedPlayersCache = []
+    _connectedPlayersCacheTime = None
+    
     
     def __init__(self):
         cmd.Cmd.__init__(self)
@@ -90,6 +99,25 @@ class Bfbc2Commander(cmd.Cmd):
             #printPacket(DecodePacket(packet))
             return words
     
+    def _getConnectedPlayers(self):
+        if self._connectedPlayersCacheTime is not None \
+            and (time.clock() - self._connectedPlayersCacheTime) < 3:
+            return self._connectedPlayersCache
+        else:
+            words = self._sendBfbc2Cmd('admin.listPlayers all', verbose=False)
+            if words[0] == 'OK':
+                self._connectedPlayersCache = [] 
+                data = words[1:]
+                idx = 1
+                while idx < len(data):
+                    name = '"' + data[idx] + '"'
+                    self._connectedPlayersCache.append(name)
+                    idx += 4
+                self._connectedPlayersCacheTime = time.clock()
+                return self._connectedPlayersCache
+            else:
+                return []
+    
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).
@@ -106,8 +134,8 @@ class Bfbc2Commander(cmd.Cmd):
         If the 1st word received from the command is not 'OK', try to display
         the command help
         """
-        cmd, arg, line = self.parseline(line)        
-        if words and words[0] != 'OK':
+        cmd, arg, line = self.parseline(line)
+        if words and words[0] != 'OK' and words[0] != 'UnknownCommand':
             self.do_help(cmd)
             
     def emptyline(self):
@@ -115,7 +143,9 @@ class Bfbc2Commander(cmd.Cmd):
 
     def default(self, line):
         """what to do if no do_<cmd> an no bfbc2_<cmd> function are found"""
-        print self._sendBfbc2Cmd(line)
+        words = self._sendBfbc2Cmd(line)
+        print words
+        return words
     
     def completenames(self, text, *ignored):
         """command names completion. return a list of matching commands"""
@@ -176,7 +206,20 @@ class Bfbc2Commander_R8(Bfbc2Commander):
     def _complete_boolean(self, text, line, begidx, endidx):
         #print "\n>%s\t%s[%s:%s] = %s" % (text, line, begidx, endidx, line[begidx:endidx])
         completions = ['true', 'false']
-        return [a for a in completions if a.startswith(line[begidx:endidx])]
+        return [a for a in completions if a.startswith(text.lower())]
+    
+    def _complete_player_subset(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        #print "text: '%s'; args: %s" % (text, args)
+        if len(args) == 1 and args[0] == '':
+            completions = ['all', 'team', 'squad', 'player']
+        elif len(args) == 1 and args[0] == 'player':
+            completions = self._getConnectedPlayers()
+        else:
+            completions = []
+        return [a for a in completions if a.lower().startswith(text.lower())] 
+
+
     
     def help_login_plainText(self):
         print """
@@ -330,6 +373,7 @@ Response: InvalidDuration
           The message must be less than 100 characters long.
 """
 
+
     def help_admin_runNextLevel(self):
         print """
  Request: admin.runNextLevel
@@ -441,6 +485,16 @@ Response: InvalidArguments
 
   Effect: Return list of all players on the server
 """
+    def complete_admin_listPlayers(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(admin\.listPlayers\s+)', re.IGNORECASE)
+        m = reCmd.search("admin.listPlayers sqdf")
+        if m:
+            s = len(m.group(0))
+            print ">%s<" % m.group(0)
+            print "@%s@" % line[s:]
+            return self._complete_player_subset(text, line[s:], begidx - s, endidx - s)
+        else:
+            return []
 
     def help_admin_banPlayer(self):
         print """
