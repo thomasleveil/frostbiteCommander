@@ -38,9 +38,11 @@
 #        admin.unbanPlayer
 #        reservedSlots.addPlayer
 #        reservedSlots.removePlayer
+# v3.4
+#  * update documentation for admin.say for R9 server
 #
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "3.3"
+__version__ = "3.4"
 
 
 import sys
@@ -1328,12 +1330,11 @@ Response: InvalidDuration
 
     def help_admin_say(self):
         print """
- Request: admin.say <message: string> <duration [in ms]: integer> 
-                                                        <players: player subset>
+ Request: admin.say <message: string> <players: player subset>
+ 
 Response: OK
 Response: InvalidArguments
 Response: TooLongMessage
-Response: InvalidDuration
 
   Effect: Send a chat message to a group of players. The duration must be more 
           than 0 and at most 60000 ms. The message must be less than 100 
