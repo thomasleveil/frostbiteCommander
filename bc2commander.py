@@ -1336,9 +1336,8 @@ Response: OK
 Response: InvalidArguments
 Response: TooLongMessage
 
-  Effect: Send a chat message to a group of players. The duration must be more 
-          than 0 and at most 60000 ms. The message must be less than 100 
-          characters long.
+  Effect: Send a chat message to a group of players. The message must be less 
+          than 100 characters long.
 """
 
     def help_admin_runNextLevel(self):
