@@ -3,6 +3,7 @@
 
 
 ;#define Debug
+#define VersionNumber "3.5"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -10,7 +11,7 @@
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{5CA1C72F-72C2-4B61-AF76-9B2274186AA7}
 AppName=BFBC2Commander
-AppVerName=BFBC2Commander 3.4
+AppVerName=BFBC2Commander {#VersionNumber}
 AppPublisher=BFBC2Commander
 AppPublisherURL=
 AppSupportURL=
@@ -24,13 +25,13 @@ SolidCompression=true
 InternalCompressLevel=normal
 DisableStartupPrompt=true
 SetupLogging=true
-VersionInfoVersion=3.4
+VersionInfoVersion={#VersionNumber}
 VersionInfoDescription=BFBC2 Commander
 VersionInfoCopyright=
 AppCopyright=
-VersionInfoTextVersion=3.4
+VersionInfoTextVersion={#VersionNumber}
 VersionInfoProductName=BFBC2Commander
-VersionInfoProductVersion=3.4
+VersionInfoProductVersion={#VersionNumber}
 ExtraDiskSpaceRequired=5750520
 RestartIfNeededByRun=false
 PrivilegesRequired=none

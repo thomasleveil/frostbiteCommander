@@ -40,9 +40,13 @@
 #        reservedSlots.removePlayer
 # v3.4
 #  * update documentation for admin.say for R9 server
-#
+# v3.5
+#  * update CommandConsole with R9 file from DICE examples
+#  * update R9 documentation
+
+
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "3.4"
+__version__ = "3.5"
 
 
 import sys
@@ -62,6 +66,7 @@ class Bfbc2Commander(cmd.Cmd):
     """BFBC2 command processor"""
     identchars = cmd.IDENTCHARS + '.'
     _socket = None
+    _receiveBuffer = ''
     _bfbc2cmdList = []
     _bfbc2UnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'version']
     _connectedPlayersCache = []
@@ -76,8 +81,9 @@ class Bfbc2Commander(cmd.Cmd):
         cmd.Cmd.__init__(self)
         self.prompt = '> '
         
-    def initSocket(self, socket):
+    def initSocket(self, socket, receiveBuffer=''):
         self._socket = socket
+        self._receiveBuffer = receiveBuffer
         self._initAvailableCmds()
         
     def _initAvailableCmds(self):
@@ -103,7 +109,7 @@ class Bfbc2Commander(cmd.Cmd):
             self._socket.send(request)
 
             # Wait for response from server
-            packet = self._socket.recv(4096)    
+            [packet, self._receiveBuffer] = receivePacket(self._socket, self._receiveBuffer)
 
             [isFromServer, isResponse, sequence, words] = DecodePacket(packet)
 
@@ -316,7 +322,8 @@ Comments: If you are connecting to the admin interface over the internet, then
  
 Response: OK <salt: HexString> - Retrieved salt for the current connection 
 Response: PasswordNotSet - No password set for server, login impossible 
-Response: InvalidArguments Effect: Retrieves the salt, used in the hashed 
+Response: InvalidArguments 
+  Effect: Retrieves the salt, used in the hashed 
           password login process 
 
 Comments: This is step 1 in the 2-step hashed password process. When using this 
@@ -329,7 +336,8 @@ Response: OK - Login successful, you are now logged in regardless of prior
           status 
 Response: PasswordNotSet - No password set for server, login impossible 
 Response: InvalidPasswordHash - Login unsuccessful, logged-in status unchanged 
-Response: InvalidArguments Effect: Sends a hashed password to the server, in an 
+Response: InvalidArguments 
+  Effect: Sends a hashed password to the server, in an 
           attempt to log in 
           
 Comments: This is step 2 in the 2-step hashed password process. When using this 
@@ -1188,7 +1196,8 @@ Comments: If you are connecting to the admin interface over the internet, then
  
 Response: OK <salt: HexString> - Retrieved salt for the current connection 
 Response: PasswordNotSet - No password set for server, login impossible 
-Response: InvalidArguments Effect: Retrieves the salt, used in the hashed 
+Response: InvalidArguments 
+  Effect: Retrieves the salt, used in the hashed 
           password login process 
 
 Comments: This is step 1 in the 2-step hashed password process. When using this 
@@ -1201,7 +1210,8 @@ Response: OK - Login successful, you are now logged in regardless of prior
           status 
 Response: PasswordNotSet - No password set for server, login impossible 
 Response: InvalidPasswordHash - Login unsuccessful, logged-in status unchanged 
-Response: InvalidArguments Effect: Sends a hashed password to the server, in an 
+Response: InvalidArguments 
+  Effect: Sends a hashed password to the server, in an 
           attempt to log in 
           
 Comments: This is step 2 in the 2-step hashed password process. When using this 
@@ -1261,7 +1271,6 @@ Response: InvalidArguments
   Effect: Set whether or not the server will send events to the current 
           connection
 """
-    
     complete_eventsEnabled = _complete_boolean
 
     def help_help(self):
@@ -1306,8 +1315,8 @@ Response: InvalidPbServerCommand - Command does not begin with 'pb_sv_'
         print """
  Request: serverInfo 
  
-Response: OK <serverName> <current playercount> <max playercount> 
-                                              <current gamemode> <current map> 
+Response: OK <serverName> <current playercount> <max playercount> <current gamem
+			ode> <current map> <current round> <max rounds> 
 Response: InvalidArguments 
 
   Effect: Query for brief server info. 
@@ -1336,7 +1345,7 @@ Response: OK
 Response: InvalidArguments
 Response: TooLongMessage
 
-  Effect: Send a chat message to a group of players. The message must be less 
+  Effect: Send a chat message to players. The message must be less 
           than 100 characters long.
 """
 
@@ -1348,7 +1357,7 @@ Response: OK
 Response: InvalidArguments
 
   Effect: Switch to next level
-Comments: Always successful
+Comments: Always successful.
 """
 
     def help_admin_currentLevel(self):
@@ -1396,7 +1405,6 @@ Response: LevelNotAvailable - server currently has no level loaded / level not
 Response: OK <map names>
 Response: InvalidArguments
 Response: InvalidPlaylist <play list> - Play list doesn't exist. 
-                                    Should be RUSH, CONQUEST, SQDM or SQRUSH. 
 
   Effect: Retrieve maplist of maps supported in this play list
 """
@@ -1407,7 +1415,8 @@ Response: InvalidPlaylist <play list> - Play list doesn't exist.
  
 Response: OK - Play list was changed
 Response: InvalidArguments
-Response: InvalidPlaylist - Play list doesn't exist on server
+Response: InvalidPlaylist - Play list doesn't exist on server. Should be RUSH, 
+		  CONQUEST, SQDM or SQRUSH.
 
   Effect: Set the play list on the server.
 Comments: Will only use maps supported for this play list. So the mapList might 
@@ -2041,14 +2050,15 @@ def main():
             print 'Connecting to : %s:%d...' % ( host, port )
             serverSocket.connect( ( host, port ) )
             serverSocket.setblocking(1)
-
+            
+            receiveBuffer = ""
             if pw:
 
                 # Retrieve this connection's 'salt' (magic value used when encoding password) from server
                 getPasswordSaltRequest = EncodeClientRequest( [ "login.hashed" ] )
                 serverSocket.send(getPasswordSaltRequest)
 
-                getPasswordSaltResponse = serverSocket.recv(4096)
+                [getPasswordSaltResponse, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
                 #printPacket(DecodePacket(getPasswordSaltResponse))
 
                 [isFromServer, isResponse, sequence, words] = DecodePacket(getPasswordSaltResponse)
@@ -2066,7 +2076,7 @@ def main():
                 loginRequest = EncodeClientRequest( [ "login.hashed", passwordHashHexString ] )
                 serverSocket.send(loginRequest)
 
-                loginResponse = serverSocket.recv(4096)    
+                [loginResponse, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
                 #printPacket(DecodePacket(loginResponse))
 
                 [isFromServer, isResponse, sequence, words] = DecodePacket(loginResponse)
@@ -2100,7 +2110,7 @@ def main():
             
             request = EncodeClientRequest(['version'])
             serverSocket.send(request)
-            packet = serverSocket.recv(4096)    
+            [packet, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
             [isFromServer, isResponse, sequence, words] = DecodePacket(packet)
             if words[0]=='OK':
                 bfbc2version = int(words[2])
@@ -2110,7 +2120,7 @@ def main():
             else:
                 c = Bfbc2Commander_R9()
                 
-            c.initSocket(serverSocket)
+            c.initSocket(serverSocket, receiveBuffer)
             c.cmdloop()
 
 
