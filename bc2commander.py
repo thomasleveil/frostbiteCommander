@@ -47,7 +47,18 @@
 #  * add cmd doc for admin.killPlayer, admin.movePlayer, admin.shutdown
 #  * remove R8 support
 #  * add hidden help topic "_undocumented_commands"
+#  * add command completion for :
+#       admin.yell
+#       admin.setPlaylist
+#       admin.kickPlayer
+#       admin.killPlayer
+#       admin.listPlayers
+#       admin.movePlayer
+#       banList.remove
+#       reservedSlots.removePlayer
+#       reservedSlots.addPlayer
 #
+
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
 __version__ = "3.6"
 
@@ -75,8 +86,8 @@ class Bfbc2Commander(cmd.Cmd):
     _connectedPlayersCache = []
     _connectedPlayersCacheTime = None
     _playlistsCache = None
-    _bannedPlayersCache = []
-    _bannedPlayersCacheTime = None
+    _banlistCache = []
+    _banlistCacheTime = None
     _reservedSlotsCache = []
     _reservedSlotsCacheTime = None
     
@@ -126,49 +137,49 @@ class Bfbc2Commander(cmd.Cmd):
     
     def _getConnectedPlayers(self):
         if self._connectedPlayersCacheTime is not None \
-            and (time.clock() - self._connectedPlayersCacheTime) < 3:
+            and (time.time() - self._connectedPlayersCacheTime) < 3:
             return self._connectedPlayersCache
         else:
             words = self._sendBfbc2Cmd('admin.listPlayers all', verbose=False)
             if words[0] == 'OK':
                 self._connectedPlayersCache = [] 
-                data = words[1:]
-                idx = 1
-                while idx < len(data):
-                    name = '"' + data[idx] + '"'
-                    self._connectedPlayersCache.append(name)
-                    idx += 4
-                self._connectedPlayersCacheTime = time.clock()
+                playersInfo = PlayerInfoBlock(words[1:])
+                for p in playersInfo:
+                    self._connectedPlayersCache.append(p['name'])
+                self._connectedPlayersCacheTime = time.time()
                 return self._connectedPlayersCache
             else:
                 return []
-            
-    def _getBannedPlayers(self):
-        if self._bannedPlayersCacheTime is not None \
-            and (time.clock() - self._bannedPlayersCacheTime) < 3:
-            return self._bannedPlayersCache
+    
+    def _getBanlist(self):
+        if self._banlistCacheTime is not None \
+            and (time.time() - self._banlistCacheTime) < 2:
+            return self._banlistCache
         else:
-            words = self._sendBfbc2Cmd('admin.listPlayerBans', verbose=False)
+            words = self._sendBfbc2Cmd('banList.list', verbose=False)
             if words[0] == 'OK':
-                self._bannedPlayersCache = [] 
-                regBannedPlayers = re.compile('(\["(?P<name>[^"]+)"]\s+=\s+{[^}]+},\s*)')
-                for i in regBannedPlayers.finditer(words[1]):
-                    name = i.group('name')
-                    self._bannedPlayersCache.append(name)
-                self._bannedPlayersCacheTime = time.clock()
-                return self._bannedPlayersCache
+                self._banlistCache = words[1:]
+                self._banlistCacheTime = time.time()
+                return self._banlistCache
             else:
                 return []
+    
+    def _getBans(self):
+        bans = []
+        banInfo = BanlistContent(self._getBanlist())
+        for b in banInfo:
+            bans.append(b['idType'] + ' ' + b['id'])
+        return bans
             
     def _getReservedSlots(self):
         if self._reservedSlotsCacheTime is not None \
-            and (time.clock() - self._reservedSlotsCacheTime) < 2:
+            and (time.time() - self._reservedSlotsCacheTime) < 2:
             return self._reservedSlotsCache
         else:
             words = self._sendBfbc2Cmd('reservedSlots.list', verbose=False)
             if words[0] == 'OK':
                 self._reservedSlotsCache = words[1:]
-                self._reservedSlotsCacheTime = time.clock()
+                self._reservedSlotsCacheTime = time.time()
                 return self._reservedSlotsCache
             else:
                 return []
@@ -281,6 +292,133 @@ class Bfbc2Commander(cmd.Cmd):
         self.columnize(self.get_undocumented_commands())
 
 
+        
+class PlayerInfoBlock:
+    """
+    help extract player info from a BFBC2 Player Info Block which we obtain
+    from admin.listPlayers
+    
+    usage :
+        words = [3, 'name', 'guid', 'ping', 2, 
+            'Courgette', 'A32132e', 130, 
+            'SpacepiG', '6546545665465', 120,
+            'Bakes', '6ae54ae54ae5', 50]
+        playersInfo = PlayerInfoBlock(words)
+        print "num of players : %s" % len(playersInfo)
+        print "first player : %s" % playersInfo[0]
+        print "second player : %s" % playersInfo[1]
+        print "the first 2 players : %s" % playersInfo[0:2]
+        for p in playersInfo:
+            print p
+    """
+    playersData = []
+    numOfParameters= 0
+    numOfPlayers = 0
+    parameterTypes = []
+    
+    def __init__(self, data):
+        """Represent a BFBC2 Player info block
+        The standard set of info for a group of players contains a lot of different 
+        fields. To reduce the risk of having to do backwards-incompatible changes to
+        the protocol, the player info block includes some formatting information.
+            
+        <number of parameters>       - number of parameters for each player 
+        N x <parameter type: string> - the parameter types that will be sent below 
+        <number of players>          - number of players following 
+        M x N x <parameter value>    - all parameter values for player 0, then all 
+                                    parameter values for player 1, etc
+                                    
+        Current parameters:
+          name     string     - player name 
+          guid     GUID       - player GUID, or '' if GUID is not yet known 
+          teamId   Team ID    - player's current team 
+          squadId  Squad ID   - player's current squad 
+          kills    integer    - number of kills, as shown in the in-game scoreboard
+          deaths   integer    - number of deaths, as shown in the in-game scoreboard
+          score    integer    - score, as shown in the in-game scoreboard 
+          ping     integer    - ping (ms), as shown in the in-game scoreboard
+        """
+        self.numOfParameters = int(data[0])
+        self.parameterTypes = data[1:1+self.numOfParameters]
+        self.numOfPlayers = int(data[1+self.numOfParameters])
+        self.playersData = data[1+self.numOfParameters+1:]
+    
+    def __len__(self):
+        return self.numOfPlayers
+    
+    def __getitem__(self, key):
+        """Returns the player data, for provided key (int or slice)"""
+        if isinstance(key, slice):
+            indices = key.indices(len(self))
+            return [self.getPlayerData(i) for i in range(*indices) ]
+        else:
+            return self.getPlayerData(key)
+
+    def getPlayerData(self, index):
+        if index >= self.numOfPlayers:
+            raise IndexError
+        data = {}
+        playerData = self.playersData[index*self.numOfParameters:(index+1)*self.numOfParameters]
+        for i in range(self.numOfParameters):
+            data[self.parameterTypes[i]] = playerData[i]
+        return data 
+
+
+class BanlistContent:
+    """
+    help extract banlist info from a BFBC2 banList.list response
+    
+    usage :
+        words = [2, 
+            'name', 'Courgette', 'perm', , 'test',  
+            'name', 'Courgette', 'seconds', 3600 , 'test2'] 
+        bansInfo = BanlistContent(words)
+        print "num of bans : %s" % len(bansInfo)
+        print "first ban : %s" % bansInfo[0]
+        print "second ban : %s" % bansInfo[1]
+        print "the first 2 bans : %s" % bansInfo[0:2]
+        for b in bansInfo:
+            print b
+    """
+    bansData = []
+    numOfBans = 0
+    
+    def __init__(self, data):
+        """Represent a BFBC2 banList.list response
+        Request: banList.list 
+        Response: OK <player ban entries> 
+        Response: InvalidArguments 
+        Effect: Return list of banned players/IPs/GUIDs. 
+        Comment: The list starts with a number telling how many bans the list is holding. 
+                 After that, 5 words (Id-type, id, ban-type, time and reason) are received for every ban in the list.
+        """
+        self.bansData = data[1:]
+        self.numOfBans = data[0]
+    
+    def __len__(self):
+        return self.numOfBans
+    
+    def __getitem__(self, key):
+        """Returns the ban data, for provided key (int or slice)"""
+        if isinstance(key, slice):
+            indices = key.indices(len(self))
+            return [self.getData(i) for i in range(*indices) ]
+        else:
+            return self.getData(key)
+
+    def getData(self, index):
+        if index >= self.numOfBans:
+            raise IndexError
+        tmp = self.bansData[index*5:(index+1)*5]
+        return {
+            'idType': tmp[0], # name | ip | guid
+            'id': tmp[1],
+            'banType': tmp[2], # perm | round | seconds
+            'time': tmp[3],
+            'reason': tmp[4], # 80 chars max
+        }
+        
+        
     
 class Bfbc2Commander_R9(Bfbc2Commander):
     _bfbc2UnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'listPlayers', 'version']
@@ -288,8 +426,36 @@ class Bfbc2Commander_R9(Bfbc2Commander):
     def _complete_boolean(self, text, line, begidx, endidx):
         #print "\n>%s\t%s[%s:%s] = %s" % (text, line, begidx, endidx, line[begidx:endidx])
         completions = ['true', 'false']
-        return [a for a in completions if a.startswith(line[begidx:endidx])]
+        return [a for a in completions if a.startswith(text.lower())]
     
+    def _complete_player_subset(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        #print "text: '%s'; args: %s" % (text, args)
+        if len(args) == 1 and args[0] == '':
+            completions = ['all', 'team ', 'squad ', 'player ']
+        elif len(args) == 1 and args[0] == 'player':
+            completions = self._getConnectedPlayers()
+        else:
+            completions = []
+        return [a for a in completions if a.lower().startswith(text.lower())] 
+
+    def _complete_player(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        if len(args) == 1 and args[0] == '':
+            return [a for a in self._getConnectedPlayers() if a.lower().startswith(text.lower())]
+        else:
+            return []
+
+    def _complete_timeout(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        if len(args) == 1 and args[0] == '':
+            return [a for a in ['perm', 'round', 'seconds '] if a.lower().startswith(text.lower())]
+        else:
+            return []
+
+    def _complete_playlist(self, text, line, begidx, endidx):
+        return [a for a in self._getPlaylists() if a.lower().startswith(text.lower())]
+
     
     def help_login_plainText(self):
         print """
@@ -453,6 +619,19 @@ Response: InvalidDuration
           amount of time. The duration must be more than 0 and at most 60000 ms.
           The message must be less than 100 characters long.
 """
+    def complete_admin_yell(self, text, line, begidx, endidx):
+        reCmd1 = re.compile('^(admin\.yell\s+$)', re.IGNORECASE)
+        m = reCmd1.match(line)
+        if m:
+            return ['"'] # to force the user to put quotes around the message
+        else:
+            reCmd = re.compile('^(admin\.yell\s+"[^"]*"\s+\d+\s+)', re.IGNORECASE)
+            m = reCmd.search(line)
+            if m:
+                s = len(m.group(0))
+                return self._complete_player_subset(text, line[s:], begidx - s, endidx - s)
+            else:
+                return []
 
     def help_admin_say(self):
         print """
@@ -540,6 +719,7 @@ Comments: Will only use maps supported for this play list. So the mapList might
           be invalid 
    Delay: Change occurs after end of round
 """
+    complete_admin_setPlaylist = _complete_playlist
 
     def help_admin_getPlaylist(self):
         print """
@@ -572,6 +752,12 @@ Response:  PlayerNotFound  - Player name doesn't exist on server
   Effect:  Kick player <soldier name> from server  
 Comments:  Reason text is optional. Default reason is 'Kicked by administrator'.  
 """
+    def complete_admin_kickPlayer(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(admin\.kickPlayer\s*)$', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            s = len(m.group(0))
+            return self._complete_player(text, line[s:], begidx - s, endidx - s)
 
     def help_admin_killPlayer(self):
         print """
@@ -583,6 +769,12 @@ Response:  InvalidPlayerName  - Player name doesn't exist on server
   
   Effect:  Kill player <soldier name>
 """
+    def complete_admin_killPlayer(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(admin\.killPlayer\s*)$', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            s = len(m.group(0))
+            return self._complete_player(text, line[s:], begidx - s, endidx - s)
 
     def help_admin_listPlayers(self):
         print """
@@ -593,6 +785,15 @@ Response: InvalidArguments
 
   Effect: Return list of all players on the server
 """
+    def complete_admin_listPlayers(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(admin\.listPlayers\s+)', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            s = len(m.group(0))
+            return self._complete_player_subset(text, line[s:], begidx - s, endidx - s)
+        else:
+            return []
+            
 
     def help_admin_movePlayer(self):
         print """
@@ -606,6 +807,13 @@ Response:  InvalidForceKill  - forceKill must be 'true' or 'false'
   Effect:  move player to teamID, squadID after he dies. If forceKill is
            true, then also kill him
 """
+    def complete_admin_movePlayer(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(admin\.movePlayer\s*)$', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            s = len(m.group(0))
+            return self._complete_player(text, line[s:], begidx - s, endidx - s)
+
 
     def help_admin_shutDown(self):
         print """
@@ -683,6 +891,12 @@ Response: NotFound - Id not found in banlist; banlist unchanged
 
   Effect: Remove player/ip/guid from banlist
 """
+    def complete_banList_remove(self, text, line, begidx, endidx):
+        reCmd = re.compile('^\s*banList\.remove\s+(?P<param>.*)$', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            param = m.group('param')
+            return [a for a in self._getBans() if a.lower().startswith(param.lower())]
 
     def help_banList_clear(self):
         print """\
@@ -759,6 +973,12 @@ Response: PlayerAlreadyInList - Player is already in the list; reserved slots
           
   Effect: Add <soldier name> to list of players who can use the reserved slots.
 """
+    def complete_reservedSlots_addPlayer(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(\s*reservedSlots\.addPlayer\s*)', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            s = len(m.group(0))
+            return self._complete_player(text, line[s:], begidx - s, endidx - s)
 
     def help_reservedSlots_removePlayer(self):
         print """
@@ -772,6 +992,12 @@ Response: PlayerNotInList - Player does not exist in list; reserved slots list
   Effect: Remove <soldier name> from list of players who can use the reserved 
           slots.
 """
+    def complete_reservedSlots_removePlayer(self, text, line, begidx, endidx):
+        reCmd = re.compile('^\s*reservedSlots\.removePlayer\s+(?P<player>.*)$', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            name = m.group('player')
+            return [a for a in self._getReservedSlots() if a.lower().startswith(name.lower())]
 
     def help_reservedSlots_clear(self):
         print """
