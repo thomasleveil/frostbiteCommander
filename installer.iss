@@ -3,7 +3,7 @@
 
 
 ;#define Debug
-#define VersionNumber "3.6"
+#define VersionNumber "3.7"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.

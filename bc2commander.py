@@ -57,10 +57,12 @@
 #       banList.remove
 #       reservedSlots.removePlayer
 #       reservedSlots.addPlayer
+# v3.7
+#  * update command doc for admin.movePlayer and admin.killPlayer
 #
 
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "3.6"
+__version__ = "3.7"
 
 
 import sys
@@ -761,13 +763,14 @@ Comments:  Reason text is optional. Default reason is 'Kicked by administrator'.
 
     def help_admin_killPlayer(self):
         print """
- Request:  admin.killPlayer  <soldier name: player name>
+ Request:  admin.killPlayer  <name: player name>
  
 Response:  OK - Player did exist, and kill him 
 Response:  InvalidArguments  
 Response:  InvalidPlayerName  - Player name doesn't exist on server 
+Response:  SoldierNotAlive  
   
-  Effect:  Kill player <soldier name>
+  Effect:  Kill a player without any stats effect
 """
     def complete_admin_killPlayer(self, text, line, begidx, endidx):
         reCmd = re.compile('^(admin\.killPlayer\s*)$', re.IGNORECASE)
@@ -797,15 +800,20 @@ Response: InvalidArguments
 
     def help_admin_movePlayer(self):
         print """
- Request:  admin.movePlayer  <soldier name: player name> <team: teamID> <squad: squadID> <bool: forceKill>
+ Request:  admin.movePlayer <name: player name> <teamId: TeamID> <squadId: SquadID> <forceKill: boolean>
  
 Response:  OK
-Response:  InvalidArguments  
+Response:  InvalidArguments
+Response:  InvalidTeamId
+Response:  InvalidSquadId
 Response:  InvalidPlayerName  - Player name doesn't exist on server 
 Response:  InvalidForceKill  - forceKill must be 'true' or 'false' 
+Response:  PlayerNotDead - Player is alive and forceKill is false
+Response:  SetTeamFailed
+Response:  SetSquadFailed
   
-  Effect:  move player to teamID, squadID after he dies. If forceKill is
-           true, then also kill him
+  Effect:  Move a player to another team and/or squad
+ Comment:  Only works if player is dead. This command will kill player if forceKill is true
 """
     def complete_admin_movePlayer(self, text, line, begidx, endidx):
         reCmd = re.compile('^(admin\.movePlayer\s*)$', re.IGNORECASE)
