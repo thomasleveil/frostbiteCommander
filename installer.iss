@@ -3,34 +3,34 @@
 
 
 ;#define Debug
-#define VersionNumber "3.7"
+#define VersionNumber "4.0"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{5CA1C72F-72C2-4B61-AF76-9B2274186AA7}
-AppName=BFBC2Commander
-AppVerName=BFBC2Commander {#VersionNumber}
-AppPublisher=BFBC2Commander
+AppName=FrostbiteCommander
+AppVerName=FrostbiteCommander {#VersionNumber}
+AppPublisher=FrostbiteCommander
 AppPublisherURL=
 AppSupportURL=
 AppUpdatesURL=
-DefaultDirName={pf}\BFBC2Commander
-DefaultGroupName=BFBC2 Commander
+DefaultDirName={pf}\FrostbiteCommander
+DefaultGroupName=Frostbite Commander
 LicenseFile=LICENSE.txt
-OutputBaseFilename=BFBC2Commander_setup
+OutputBaseFilename=FrostbiteCommander_setup
 Compression=lzma/ultra
 SolidCompression=true
 InternalCompressLevel=normal
 DisableStartupPrompt=true
 SetupLogging=true
 VersionInfoVersion={#VersionNumber}
-VersionInfoDescription=BFBC2 Commander
+VersionInfoDescription=Frostbite Commander
 VersionInfoCopyright=
 AppCopyright=
 VersionInfoTextVersion={#VersionNumber}
-VersionInfoProductName=BFBC2Commander
+VersionInfoProductName=FrostbiteCommander
 VersionInfoProductVersion={#VersionNumber}
 ExtraDiskSpaceRequired=5750520
 RestartIfNeededByRun=false
@@ -64,8 +64,8 @@ Name: slovenian; MessagesFile: compiler:Languages\Slovenian.isl
 Name: spanish; MessagesFile: compiler:Languages\Spanish.isl
 
 [Icons]
-Name: {group}\{cm:executable,bc2commander.exe}; Filename: {app}\bc2commander.exe; WorkingDir: {app}; Flags: dontcloseonexit; Comment: Run BFBC2 Commander
-Name: {group}\{cm:website,Website}; Filename: http://courgette.github.com/bfbc2Commander/; Comment: visit the BFBC2 Commander website
+Name: {group}\{cm:executable,bc2commander.exe}; Filename: {app}\frostbiteCommander.exe; WorkingDir: {app}; Flags: dontcloseonexit; Comment: Run BFBC2 Commander
+Name: {group}\{cm:website,Website}; Filename: http://courgette.github.com/frostbiteCommander/; Comment: visit the Frostbite Commander website
 Name: {group}\{cm:UninstallProgram,Uninstall}; Filename: {uninstallexe}
 
 [Dirs]
@@ -84,5 +84,5 @@ Name: {app}\*; Type: filesandordirs
 
 
 [CustomMessages]
-executable=BC2 Commander
+executable=Frostbite Commander
 website=Website

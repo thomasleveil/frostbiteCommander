@@ -1,14 +1,14 @@
 from distutils.core import setup 
 import sys, os, py2exe
-import bc2commander
+import frostbiteCommander
 
 
 sys.argv += ['py2exe']
 
 setup(
-    name = "BFBC2 Commander",
-    version = bc2commander.__version__,
-    console = ["bc2commander.py"],
+    name = "Frostbite Commander",
+    version = frostbiteCommander.__version__,
+    console = ["frostbiteCommander.py"],
     data_files = ['LICENSE.txt'],
     options = {
         "py2exe": {

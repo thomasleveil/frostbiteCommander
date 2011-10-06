@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Provide a text console for BFBC2 servers with command help and autocompletion
+# Provide a text console for Frostbite servers with command help and autocompletion
 # 
 # CHANGELOG : 
 # v1.0 :
@@ -76,15 +76,15 @@ import readline
 import getpass
 from CommandConsole import *
 
+PlayerInfoBlock = None # shortcut to class PlayerInfoBlock1 or PlayerInfoBlock2
 
-
-class Bfbc2Commander(cmd.Cmd):
-    """BFBC2 command processor"""
+class FrostbiteCommander(cmd.Cmd):
+    """Frostbite command processor"""
     identchars = cmd.IDENTCHARS + '.'
     _socket = None
     _receiveBuffer = ''
-    _bfbc2cmdList = []
-    _bfbc2UnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'version']
+    _frosbitecmdList = []
+    _frostbiteUnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'version']
     _connectedPlayersCache = []
     _connectedPlayersCacheTime = None
     _playlistsCache = None
@@ -104,13 +104,13 @@ class Bfbc2Commander(cmd.Cmd):
         
     def _initAvailableCmds(self):
         """depending on the login status, build up the list of available commands"""
-        words = self._sendBfbc2Cmd('help', verbose=False)
+        words = self._sendFrostbiteCmd('help', verbose=False)
         if words[0] == 'OK':
-            self._bfbc2cmdList = words[1:]
+            self._frosbitecmdList = words[1:]
         else:
-            self._bfbc2cmdList = self._bfbc2UnprivilegedCmdList
+            self._frosbitecmdList = self._frostbiteUnprivilegedCmdList
         
-    def _sendBfbc2Cmd(self, command, verbose=True):
+    def _sendFrostbiteCmd(self, command, verbose=False):
         """send a command through the BFBC2 socket and returns the response's words"""
         words = shlex.split(command)
 
@@ -142,7 +142,7 @@ class Bfbc2Commander(cmd.Cmd):
             and (time.time() - self._connectedPlayersCacheTime) < 3:
             return self._connectedPlayersCache
         else:
-            words = self._sendBfbc2Cmd('admin.listPlayers all', verbose=False)
+            words = self._sendFrostbiteCmd('admin.listPlayers all', verbose=False)
             if words[0] == 'OK':
                 self._connectedPlayersCache = [] 
                 playersInfo = PlayerInfoBlock(words[1:])
@@ -158,7 +158,7 @@ class Bfbc2Commander(cmd.Cmd):
             and (time.time() - self._banlistCacheTime) < 2:
             return self._banlistCache
         else:
-            words = self._sendBfbc2Cmd('banList.list', verbose=False)
+            words = self._sendFrostbiteCmd('banList.list', verbose=False)
             if words[0] == 'OK':
                 self._banlistCache = words[1:]
                 self._banlistCacheTime = time.time()
@@ -178,7 +178,7 @@ class Bfbc2Commander(cmd.Cmd):
             and (time.time() - self._reservedSlotsCacheTime) < 2:
             return self._reservedSlotsCache
         else:
-            words = self._sendBfbc2Cmd('reservedSlots.list', verbose=False)
+            words = self._sendFrostbiteCmd('reservedSlots.list', verbose=False)
             if words[0] == 'OK':
                 self._reservedSlotsCache = words[1:]
                 self._reservedSlotsCacheTime = time.time()
@@ -190,7 +190,7 @@ class Bfbc2Commander(cmd.Cmd):
         if self._playlistsCache is not None:
             return self._playlistsCache
         else:
-            words = self._sendBfbc2Cmd('admin.getPlaylists', verbose=False)
+            words = self._sendFrostbiteCmd('admin.getPlaylists', verbose=False)
             if words[0] == 'OK':
                 self._playlistsCache = words[1:]
                 return self._playlistsCache
@@ -221,17 +221,16 @@ class Bfbc2Commander(cmd.Cmd):
         pass
 
     def default(self, line):
-        """what to do if no do_<cmd> an no bfbc2_<cmd> function are found"""
-        words = self._sendBfbc2Cmd(line)
+        """what to do if no do_<cmd> function are found"""
+        words = self._sendFrostbiteCmd(line)
         print words
         return words
     
     def completenames(self, text, *ignored):
         """command names completion. return a list of matching commands"""
-        cmds = self._bfbc2cmdList
+        cmds = self._frosbitecmdList
         if 'help' not in cmds:
             cmds.insert(0, 'help')
-
         return [a for a in cmds if a.lower().startswith(text.lower())]
 
     def do_help(self, line):
@@ -242,32 +241,32 @@ class Bfbc2Commander(cmd.Cmd):
         else:
             print "Available commands :"
             print "====================\n"
-            self.columnize(self._bfbc2cmdList)
+            self.columnize(self._frosbitecmdList)
         
     def do_EOF(self, arg):
         raise SystemExit
         
         
     def do_login_plainText(self, arg):
-        words = self._sendBfbc2Cmd('login.plainText ' + arg)
+        words = self._sendFrostbiteCmd('login.plainText ' + arg)
         print words
         self._initAvailableCmds()
         return words
 
     def do_logout(self, arg):
-        words = self._sendBfbc2Cmd('logout ' + arg)
+        words = self._sendFrostbiteCmd('logout ' + arg)
         print words
         self._initAvailableCmds()
         return words
         
     def do_login_hashed(self, arg):
         if arg and len(arg.strip())>0:
-            words = self._sendBfbc2Cmd('login.hashed ' + arg)
+            words = self._sendFrostbiteCmd('login.hashed ' + arg)
             print words
             return words
         else:
             """ hashed authentication helper """
-            words = self._sendBfbc2Cmd('login.hashed')
+            words = self._sendFrostbiteCmd('login.hashed')
             print words
             if words[0]=='OK':
                 salt = words[1].decode("hex")
@@ -275,14 +274,14 @@ class Bfbc2Commander(cmd.Cmd):
                 passwordHash = generatePasswordHash(salt, pw)
                 passwordHashHexString = string.upper(passwordHash.encode("hex"))
                 print "login.hashed " + passwordHashHexString
-                words = self._sendBfbc2Cmd("login.hashed " + passwordHashHexString)
+                words = self._sendFrostbiteCmd("login.hashed " + passwordHashHexString)
                 print words
                 self._initAvailableCmds()
                 return words
     
     def get_undocumented_commands(self):
         undoc_cmds = []
-        for bfbc2cmd in self._bfbc2cmdList:
+        for bfbc2cmd in self._frosbitecmdList:
             command, arg, line = self.parseline(bfbc2cmd)
             if not hasattr(self, 'help_' + command):
                 undoc_cmds.append(bfbc2cmd)
@@ -295,7 +294,7 @@ class Bfbc2Commander(cmd.Cmd):
 
 
         
-class PlayerInfoBlock:
+class PlayerInfoBlock1:
     """
     help extract player info from a BFBC2 Player Info Block which we obtain
     from admin.listPlayers
@@ -365,10 +364,42 @@ class PlayerInfoBlock:
             data[self.parameterTypes[i]] = playerData[i]
         return data 
 
+class PlayerInfoBlock2(PlayerInfoBlock1):
+    playersData = []
+    numOfParameters= 0
+    numOfPlayers = 0
+    parameterTypes = []
+    
+    def __init__(self, data):
+        """Represent a frostbite Player info block
+        The standard set of info for a group of players contains a lot of different 
+        fields. To reduce the risk of having to do backwards-incompatible changes to
+        the protocol, the player info block includes some formatting information.
+            
+        <number of players>          - number of players following 
+        <number of parameters>       - number of parameters for each player 
+        N x <parameter type: string> - the parameter types that will be sent below 
+        M x N x <parameter value>    - all parameter values for player 0, then all 
+                                    parameter values for player 1, etc
+                                    
+        Current parameters:
+          name     string     - player name 
+          teamId   Team ID    - player's current team 
+          squadId  Squad ID   - player's current squad 
+          kills    integer    - number of kills, as shown in the in-game scoreboard
+          deaths   integer    - number of deaths, as shown in the in-game scoreboard
+          score    integer    - score, as shown in the in-game scoreboard 
+        """
+        self.numOfPlayers = int(data[0])
+        self.numOfParameters = int(data[1])
+        self.parameterTypes = data[2:2+self.numOfParameters]
+        self.playersData = data[2+self.numOfParameters:]
+
+
 
 class BanlistContent:
     """
-    help extract banlist info from a BFBC2 banList.list response
+    help extract banlist info from a banList.list response
     
     usage :
         words = [2, 
@@ -386,7 +417,7 @@ class BanlistContent:
     numOfBans = 0
     
     def __init__(self, data):
-        """Represent a BFBC2 banList.list response
+        """Represent a banList.list response
         Request: banList.list 
         Response: OK <player ban entries> 
         Response: InvalidArguments 
@@ -422,8 +453,8 @@ class BanlistContent:
         
         
     
-class Bfbc2Commander_R9(Bfbc2Commander):
-    _bfbc2UnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'listPlayers', 'version']
+class Bfbc2Commander_R9(FrostbiteCommander):
+    _frostbiteUnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'listPlayers', 'version']
     
     def _complete_boolean(self, text, line, begidx, endidx):
         #print "\n>%s\t%s[%s:%s] = %s" % (text, line, begidx, endidx, line[begidx:endidx])
@@ -1387,9 +1418,78 @@ Response: InvalidArguments
     complete_vars_thirdPersonVehicleCameras = _complete_boolean
 
 
+    
+class BF3Commander_Rx(FrostbiteCommander):
+    _frostbiteUnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'listPlayers', 'version']
+    
+    def _initAvailableCmds(self):
+        """depending on the login status, build up the list of available commands"""
+        words = self._sendFrostbiteCmd('admin.help', verbose=False)
+        if words[0] == 'OK':
+            self._frosbitecmdList = words[1:]
+            self._frosbitecmdList.sort()
+        else:
+            self._frosbitecmdList = self._frostbiteUnprivilegedCmdList
+            
 
+    def _complete_boolean(self, text, line, begidx, endidx):
+        #print "\n>%s\t%s[%s:%s] = %s" % (text, line, begidx, endidx, line[begidx:endidx])
+        completions = ['true', 'false']
+        return [a for a in completions if a.startswith(text.lower())]
+    
+    def _complete_player_subset(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        #print "text: '%s'; args: %s" % (text, args)
+        if len(args) == 1 and args[0] == '':
+            completions = ['all', 'team ', 'squad ', 'player ']
+        elif len(args) == 1 and args[0] == 'player':
+            completions = self._getConnectedPlayers()
+        else:
+            completions = []
+        return [a for a in completions if a.lower().startswith(text.lower())] 
 
+    def _complete_player(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        if len(args) == 1 and args[0] == '':
+            return [a for a in self._getConnectedPlayers() if a.lower().startswith(text.lower())]
+        else:
+            return []
 
+    def _complete_timeout(self, text, line, begidx, endidx):
+        args = re.split('\s+', line[:begidx].rstrip())
+        if len(args) == 1 and args[0] == '':
+            return [a for a in ['perm', 'round', 'seconds '] if a.lower().startswith(text.lower())]
+        else:
+            return []
+
+    def _complete_playlist(self, text, line, begidx, endidx):
+        return [a for a in self._getPlaylists() if a.lower().startswith(text.lower())]
+
+    def complete_admin_listPlayers(self, text, line, begidx, endidx):
+        reCmd = re.compile('^(admin\.listPlayers\s+)', re.IGNORECASE)
+        m = reCmd.search(line)
+        if m:
+            s = len(m.group(0))
+            return self._complete_player_subset(text, line[s:], begidx - s, endidx - s)
+        else:
+            return []
+    
+    complete_listPlayers = complete_admin_listPlayers
+
+    def help_vars_killCam(self):
+        print """
+ Request: vars.killCam [enabled: boolean]
+ 
+Response: OK - for set operation
+Response: OK <enabled: boolean> - for get operation
+Response: InvalidArguments
+
+  Effect: Set if killcam is enabled 
+   Delay: Works after map switch
+"""
+    complete_vars_killCam = _complete_boolean
+    complete_vars_friendlyFire = _complete_boolean
+    complete_vars_regenerateHealth = _complete_boolean
 
 
 def main_is_frozen():
@@ -1404,7 +1504,7 @@ def main_is_frozen():
 def main():
     from getopt import getopt
 
-    print "BFBC2 Commander"
+    print "Frostbite Commander"
     serverSocket = None
 
     host = None
@@ -1474,11 +1574,13 @@ def main():
                     sys.exit(0);
 
             print """\
- ____   _____    ____    ____  ____  
-| __ ) |  ___|  | __ )  / ___||___ \ 
-|  _ \ | |_   ()|  _ \ | |      __) |
-| |_) ||  _|    | |_) || |___  / __/   
-|____/ |_|    ()|____/  \____||_____|  v%s
+
+   __               _   _     _ _        
+  / _|             | | | |   (_) |       
+ | |_ _ __ ___  ___| |_| |__  _| |_  ___ 
+ |  _| '__/ _ \\/ __| __| '_ \\| | __|/ _ \\
+ | | | | | (_) \\__ \ |_| |_) | | |_|  __/
+ |_| |_|  \___/|___/\\__|_.__/|_|\\__|\\___|  v%s
                 
              by %s                  
   ____                                                _             
@@ -1499,9 +1601,19 @@ def main():
             [packet, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
             [isFromServer, isResponse, sequence, words] = DecodePacket(packet)
             if words[0]=='OK':
-                bfbc2version = int(words[2])
+                game = words[1]
+                version = int(words[2])
             
-            c = Bfbc2Commander_R9()
+            PlayerInfoBlock = PlayerInfoBlock1
+            if game == "BFBC2":
+                c = Bfbc2Commander_R9()
+            elif game == "MOH":
+                c = Bfbc2Commander_R9()
+            elif game == "BF3":
+                PlayerInfoBlock = PlayerInfoBlock2
+                c = BF3Commander_Rx()
+            else:
+                c = FrostbiteCommander()
                 
             c.initSocket(serverSocket, receiveBuffer)
             c.cmdloop()
