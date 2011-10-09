@@ -3,86 +3,27 @@
 #
 # Provide a text console for Frostbite servers with command help and autocompletion
 # 
-# CHANGELOG : 
-# v1.0 :
-#   * fix bug when password is provided on the command line
-#   * cmd doc is now complete and updated from http://blogs.battlefield.ea.com/battlefield_bad_company/archive/2010/02/05/remote-administration-interface-for-bfbc2-pc.aspx## R7
-#   * on Windows, wait for the user to press the Enter key before exiting
-# v1.1
-#   * add missing imp import (do not affect Windows dist)
-# v2.0
-#   * display the cmd help in case of non 'OK' response from the BFBC2 server
-#   * login.hashed asks the user for its passwords, computes and sends the hash automatically
-#   * allow to define custom behaviour for bfbc2 commands by defining function named after
-#       the pattern : bfbc2_<cmdBeforeDot>_<cmdAfterDot>
-#       ie: login.hashed -> bfbc2_login_hashed
-# v3.0
-#   * fix bfbc2_logout
-#   * make the command document easier to read
-#   * display words sent to the BFBC2 server
-#   * provide arguments completion for commands expecting a boolean
-#   * refactor to make Bfbc2Commander_* class writting more conventional (regaring the cmd.Cmd documentation)
-# v3.1
-#   * add R9 commands documentation
-#   * improve R8 commands documentation formatting
-# v3.2
-#   * displays command help if the return value is not 'OK' and not 'UnknownCommand'
-#   * add parameters completion for admin.listPlayers
-# v3.3 
-#   * fix command completion for admin.listPlayers
-#   * add command completion for :
-#        admin.getPlaylist
-#        admin.setPlaylist
-#        admin.kickPlayer
-#        admin.banPlayer
-#        admin.unbanPlayer
-#        reservedSlots.addPlayer
-#        reservedSlots.removePlayer
-# v3.4
-#  * update documentation for admin.say for R9 server
-# v3.5
-#  * update CommandConsole with R9 file from DICE examples
-#  * update R9 documentation
-# v3.6 
-#  * add cmd doc for admin.killPlayer, admin.movePlayer, admin.shutdown
-#  * remove R8 support
-#  * add hidden help topic "_undocumented_commands"
-#  * add command completion for :
-#       admin.yell
-#       admin.setPlaylist
-#       admin.kickPlayer
-#       admin.killPlayer
-#       admin.listPlayers
-#       admin.movePlayer
-#       banList.remove
-#       reservedSlots.removePlayer
-#       reservedSlots.addPlayer
-# v3.7
-#  * update command doc for admin.movePlayer and admin.killPlayer
 #
+from protocol import FrostbiteServer, FrostbiteError, generatePasswordHash, \
+    CommandFailedError
+import cmd
+import getpass
+import imp
+import re
+import readline
+import shlex
+import sys
+import time
 
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "3.7"
+__version__ = "4.1"
 
 
-import sys
-import string
-import re
-import cmd
-import socket
-import imp
-import time
-import readline
-import getpass
-from CommandConsole import *
-
-PlayerInfoBlock = None # shortcut to class PlayerInfoBlock1 or PlayerInfoBlock2
 
 class FrostbiteCommander(cmd.Cmd):
     """Frostbite command processor"""
     identchars = cmd.IDENTCHARS + '.'
-    _socket = None
-    _receiveBuffer = ''
+    _frostbiteServer = None
     _frosbitecmdList = []
     _frostbiteUnprivilegedCmdList = ['login.hashed', 'login.plainText', 'logout', 'quit', 'serverInfo', 'version']
     _connectedPlayersCache = []
@@ -93,49 +34,35 @@ class FrostbiteCommander(cmd.Cmd):
     _reservedSlotsCache = []
     _reservedSlotsCacheTime = None
     
-    def __init__(self):
+    def __init__(self, frostbiteServer):
         cmd.Cmd.__init__(self)
         self.prompt = '> '
-        
-    def initSocket(self, socket, receiveBuffer=''):
-        self._socket = socket
-        self._receiveBuffer = receiveBuffer
+        self._frostbiteServer = frostbiteServer
         self._initAvailableCmds()
         
     def _initAvailableCmds(self):
         """depending on the login status, build up the list of available commands"""
-        words = self._sendFrostbiteCmd('help', verbose=False)
-        if words[0] == 'OK':
-            self._frosbitecmdList = words[1:]
-        else:
+        try:
+            self._frosbitecmdList = self._frostbiteServer.command('help')
+            self._frosbitecmdList.sort()
+        except CommandFailedError, err:
+            print err.message
             self._frosbitecmdList = self._frostbiteUnprivilegedCmdList
         
     def _sendFrostbiteCmd(self, command, verbose=False):
-        """send a command through the BFBC2 socket and returns the response's words"""
+        """send a command and returns the response's words"""
         words = shlex.split(command)
 
         if len(words) >= 1:
 
             if "quit" == words[0]:
+                self._frostbiteServer.close()
                 sys.exit(0)
-
-            # Send request to server on command channel
-            request = EncodeClientRequest(words)
-            if verbose: print words
-            self._socket.send(request)
-
-            # Wait for response from server
-            [packet, self._receiveBuffer] = receivePacket(self._socket, self._receiveBuffer)
-
-            [isFromServer, isResponse, sequence, words] = DecodePacket(packet)
-
-            # The packet from the server should 
-            # For now, we always respond with an "OK"
-            if not isResponse:
-                if verbose: print 'Received an unexpected request packet from server, ignored: %s' % (DecodePacket(packet),)
-
-            #printPacket(DecodePacket(packet))
-            return words
+            try:
+                response = self._frostbiteServer.command(tuple(words))
+                return ['OK'] + response
+            except CommandFailedError, err:
+                return err.message
     
     def _getConnectedPlayers(self):
         if self._connectedPlayersCacheTime is not None \
@@ -272,12 +199,19 @@ class FrostbiteCommander(cmd.Cmd):
                 salt = words[1].decode("hex")
                 pw = getpass.getpass()
                 passwordHash = generatePasswordHash(salt, pw)
-                passwordHashHexString = string.upper(passwordHash.encode("hex"))
+                passwordHashHexString = passwordHash.encode("hex").upper()
                 print "login.hashed " + passwordHashHexString
                 words = self._sendFrostbiteCmd("login.hashed " + passwordHashHexString)
                 print words
                 self._initAvailableCmds()
                 return words
+            
+    def do_listPlayers(self, arg):
+        words = self._sendFrostbiteCmd('listPlayers ' + arg)
+        print words
+        for p in PlayerInfoBlock(words[1:]):
+            print "%r" % p
+    do_admin_listPlayers = do_admin_listplayers = do_listplayers = do_listPlayers
     
     def get_undocumented_commands(self):
         undoc_cmds = []
@@ -395,6 +329,7 @@ class PlayerInfoBlock2(PlayerInfoBlock1):
         self.parameterTypes = data[2:2+self.numOfParameters]
         self.playersData = data[2+self.numOfParameters:]
 
+PlayerInfoBlock = None # shortcut to class PlayerInfoBlock1 or PlayerInfoBlock2
 
 
 class BanlistContent:
@@ -1424,11 +1359,11 @@ class BF3Commander_Rx(FrostbiteCommander):
     
     def _initAvailableCmds(self):
         """depending on the login status, build up the list of available commands"""
-        words = self._sendFrostbiteCmd('admin.help', verbose=False)
-        if words[0] == 'OK':
-            self._frosbitecmdList = words[1:]
+        try:
+            self._frosbitecmdList = self._frostbiteServer.command('admin.help')
             self._frosbitecmdList.sort()
-        else:
+        except CommandFailedError, err:
+            print err.message
             self._frosbitecmdList = self._frostbiteUnprivilegedCmdList
             
 
@@ -1500,12 +1435,17 @@ def main_is_frozen():
         hasattr(sys, "importers") or # old py2exe
         imp.is_frozen("__main__")) # tools/freeze
 
-        
+
+def print_event(event):
+    print ".:: Event received : %r" % event
+
 def main():
     from getopt import getopt
+    
+    global PlayerInfoBlock
 
     print "Frostbite Commander"
-    serverSocket = None
+    frostbite_server = None
 
     host = None
     port = None
@@ -1531,58 +1471,23 @@ def main():
 
     try:
         try:
-            serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
             print 'Connecting to : %s:%d...' % ( host, port )
-            serverSocket.connect( ( host, port ) )
-            serverSocket.setblocking(1)
+            frostbite_server = FrostbiteServer(host, port, pw)
+            frostbite_server.start()
+            time.sleep(.5)
             
-            receiveBuffer = ""
+            frostbite_server.subscribe(print_event)
+            
             if pw:
-
-                # Retrieve this connection's 'salt' (magic value used when encoding password) from server
-                getPasswordSaltRequest = EncodeClientRequest( [ "login.hashed" ] )
-                serverSocket.send(getPasswordSaltRequest)
-
-                [getPasswordSaltResponse, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
-                #printPacket(DecodePacket(getPasswordSaltResponse))
-
-                [isFromServer, isResponse, sequence, words] = DecodePacket(getPasswordSaltResponse)
-
-                # if the server doesn't understand "login.hashed" command, abort
-                if words[0] != "OK":
-                    sys.exit(0);
-
-                # Given the salt and the password, combine them and compute hash value
-                salt = words[1].decode("hex")
-                passwordHash = generatePasswordHash(salt, pw)
-                passwordHashHexString = string.upper(passwordHash.encode("hex"))
-
-                # Send password hash to server
-                loginRequest = EncodeClientRequest( [ "login.hashed", passwordHashHexString ] )
-                serverSocket.send(loginRequest)
-
-                [loginResponse, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
-                #printPacket(DecodePacket(loginResponse))
-
-                [isFromServer, isResponse, sequence, words] = DecodePacket(loginResponse)
-
-                # if the server didn't like our password, abort
-                if words[0] != "OK":
-                    [isFromServer, isResponse, sequence, words] = DecodePacket(loginResponse)
-                    print words
-                    sys.exit(0);
+                frostbite_server.auth()
 
             print """\
-
    __               _   _     _ _        
   / _|             | | | |   (_) |       
  | |_ _ __ ___  ___| |_| |__  _| |_  ___ 
  |  _| '__/ _ \\/ __| __| '_ \\| | __|/ _ \\
  | | | | | (_) \\__ \ |_| |_) | | |_|  __/
  |_| |_|  \___/|___/\\__|_.__/|_|\\__|\\___|  v%s
-                
-             by %s                  
   ____                                                _             
  / ___| ___   _ __ ___   _ __ ___    __ _  _ __    __| |  ___  _ __ 
 | |    / _ \ | '_ ` _ \ | '_ ` _ \  / _` || '_ \  / _` | / _ \| '__|
@@ -1592,35 +1497,27 @@ def main():
  Type 'help' to get the list of available commands
  Type 'help <cmd>' to get help on a given command
  Use the [TAB] key for command completion
- 
-            """ % (__version__, __author__)
+            """ % __version__
             
-            
-            request = EncodeClientRequest(['version'])
-            serverSocket.send(request)
-            [packet, receiveBuffer] = receivePacket(serverSocket, receiveBuffer)
-            [isFromServer, isResponse, sequence, words] = DecodePacket(packet)
-            if words[0]=='OK':
-                game = words[1]
-                version = int(words[2])
+            (game, version) = frostbite_server.command('version')
+            print "connected to %s game server. (version %s)" % (game, version)
             
             PlayerInfoBlock = PlayerInfoBlock1
             if game == "BFBC2":
-                c = Bfbc2Commander_R9()
+                c = Bfbc2Commander_R9(frostbite_server)
             elif game == "MOH":
-                c = Bfbc2Commander_R9()
+                c = Bfbc2Commander_R9(frostbite_server)
             elif game == "BF3":
                 PlayerInfoBlock = PlayerInfoBlock2
-                c = BF3Commander_Rx()
+                c = BF3Commander_Rx(frostbite_server)
             else:
-                c = FrostbiteCommander()
-                
-            c.initSocket(serverSocket, receiveBuffer)
+                c = FrostbiteCommander(frostbite_server)
+
             c.cmdloop()
 
 
-        except socket.error, detail:
-            print 'Network error:', detail[1]
+        except FrostbiteError, detail:
+            print 'error: %r' % detail
 
         except EOFError, KeyboardInterrupt:
             pass
@@ -1630,14 +1527,16 @@ def main():
 
     finally:
         try:
-            if serverSocket is not None:
-                serverSocket.close()
-            print "Done"
+            if frostbite_server is not None:
+                frostbite_server.close()
+            print "Bye"
         except:
             raise
 
     
 if __name__ == '__main__':
+#    import logging
+#    logging.basicConfig(level=logging.NOTSET, format="%(levelname)-8s %(message)s")
     import traceback
     try:
         main()

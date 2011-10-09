@@ -1,6 +1,6 @@
 requirements :
  * MS Windows
- * python 2.6
+ * python 2.7
  * py2exe - http://www.py2exe.org/
  * pyreadline - http://ipython.scipy.org/Wiki/PyReadline/Intro
  
