@@ -10,13 +10,12 @@ import cmd
 import getpass
 import imp
 import re
-import readline
 import shlex
 import sys
 import time
 
 __author__ = "Thomas Leveil <thomasleveil@gmail.com>"
-__version__ = "4.1"
+__version__ = "4.2"
 
 
 
@@ -209,8 +208,12 @@ class FrostbiteCommander(cmd.Cmd):
     def do_listPlayers(self, arg):
         words = self._sendFrostbiteCmd('listPlayers ' + arg)
         print words
-        for p in PlayerInfoBlock(words[1:]):
-            print "%r" % p
+        if words[0] == 'OK':
+            try:
+                for p in PlayerInfoBlock(words[1:]):
+                    print "%r" % p
+            finally:
+                pass
     do_admin_listPlayers = do_admin_listplayers = do_listplayers = do_listPlayers
     
     def get_undocumented_commands(self):
@@ -250,17 +253,17 @@ class PlayerInfoBlock1:
     numOfParameters= 0
     numOfPlayers = 0
     parameterTypes = []
-    
+
     def __init__(self, data):
         """Represent a BFBC2 Player info block
-        The standard set of info for a group of players contains a lot of different 
+        The standard set of info for a group of players contains a lot of different
         fields. To reduce the risk of having to do backwards-incompatible changes to
         the protocol, the player info block includes some formatting information.
-            
-        <number of parameters>       - number of parameters for each player 
-        N x <parameter type: string> - the parameter types that will be sent below 
-        <number of players>          - number of players following 
-        M x N x <parameter value>    - all parameter values for player 0, then all 
+
+        <number of parameters>       - number of parameters for each player
+        N x <parameter type: string> - the parameter types that will be sent below
+        <number of players>          - number of players following
+        M x N x <parameter value>    - all parameter values for player 0, then all
                                     parameter values for player 1, etc
                                     
         Current parameters:
@@ -298,36 +301,82 @@ class PlayerInfoBlock1:
             data[self.parameterTypes[i]] = playerData[i]
         return data 
 
-class PlayerInfoBlock2(PlayerInfoBlock1):
-    playersData = []
-    numOfParameters= 0
-    numOfPlayers = 0
-    parameterTypes = []
-    
+
+class PlayerInfoBlock2:
+    """
+    help extract player info from a frostbite Player Info Block which we obtain
+    from admin.listPlayers
+
+    usage :
+        words = [3, 'name', 'guid', 'teamId', 2,
+            'Courgette', 'A32132e', 0,
+            'SpacepiG', '6546545665465', 1]
+        playersInfo = PlayerInfoBlock(words)
+        print "num of players : %s" % len(playersInfo)
+        print "first player : %s" % playersInfo[0]
+        print "second player : %s" % playersInfo[1]
+        print "the first 2 players : %s" % playersInfo[0:2]
+        for p in playersInfo:
+            print p
+    """
+
     def __init__(self, data):
         """Represent a frostbite Player info block
-        The standard set of info for a group of players contains a lot of different 
+        The standard set of info for a group of players contains a lot of different
         fields. To reduce the risk of having to do backwards-incompatible changes to
         the protocol, the player info block includes some formatting information.
-            
-        <number of players>          - number of players following 
-        <number of parameters>       - number of parameters for each player 
-        N x <parameter type: string> - the parameter types that will be sent below 
-        M x N x <parameter value>    - all parameter values for player 0, then all 
-                                    parameter values for player 1, etc
-                                    
+
+        The standard set of info for a group of players contains a lot of different
+        fields. To reduce the risk of having to do backwards-incompatible changes to
+        the protocol, the player info block includes some formatting information.
+
+            <number of parameters> - number of parameters for each player
+            N x <parameter type: string> - the parameter types that will be sent below
+            <number of players> - number of players following
+            M x N x <parameter value> - all parameter values for player 0, then all parameter values for player 1, etc.
+
         Current parameters:
-          name     string     - player name 
-          teamId   Team ID    - player's current team 
-          squadId  Squad ID   - player's current squad 
-          kills    integer    - number of kills, as shown in the in-game scoreboard
-          deaths   integer    - number of deaths, as shown in the in-game scoreboard
-          score    integer    - score, as shown in the in-game scoreboard 
+            name string - player name
+            guid string - player�s unique ID
+            teamId Team ID - player�s current team
+            squadId Squad ID - player�s current squad
+            kills integer - number of kills, as shown in the in-game scoreboard
+            deaths integer - number of deaths, as shown in the in-game scoreboard
+            score integer - score, as shown in the in-game scoreboard
         """
-        self.numOfPlayers = int(data[0])
-        self.numOfParameters = int(data[1])
-        self.parameterTypes = data[2:2+self.numOfParameters]
-        self.playersData = data[2+self.numOfParameters:]
+        self._num_parameters = int(data[0])
+        self._parameter_types = data[1:1+self._num_parameters]
+        self._num_players = int(data[1+self._num_parameters])
+        self._players_data = data[2+self._num_parameters:]
+
+    def __len__(self):
+        return self._num_players
+
+    def __getitem__(self, key):
+        """Returns the player data, for provided key (int or slice)"""
+        if isinstance(key, slice):
+            indices = key.indices(len(self))
+            return [self._getPlayerData(i) for i in range(*indices) ]
+        else:
+            return self._getPlayerData(key)
+
+    def _getPlayerData(self, index):
+        if index >= self._num_players:
+            raise IndexError
+        data = {}
+        playerData = self._players_data[index*self._num_parameters:(index+1)*self._num_parameters]
+        for i in range(self._num_parameters):
+            data[self._parameter_types[i]] = playerData[i]
+        return data
+
+    def __repr__(self):
+        txt = "PlayerInfoBlock["
+        for p in self:
+            txt += "%r" % p
+        txt += "]"
+        return txt
+
+
 
 PlayerInfoBlock = None # shortcut to class PlayerInfoBlock1 or PlayerInfoBlock2
 
@@ -1473,7 +1522,6 @@ def main():
         try:
             print 'Connecting to : %s:%d...' % ( host, port )
             frostbite_server = FrostbiteServer(host, port, pw)
-            frostbite_server.start()
             time.sleep(.5)
             
             frostbite_server.subscribe(print_event)
@@ -1519,7 +1567,7 @@ def main():
         except FrostbiteError, detail:
             print 'error: %r' % detail
 
-        except EOFError, KeyboardInterrupt:
+        except (EOFError, KeyboardInterrupt):
             pass
 
         except:

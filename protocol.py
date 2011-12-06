@@ -102,12 +102,12 @@ def EncodeClientResponse(sequence, words):
     
 def printPacket(packet):
 
-    if (packet[0]):
+    if packet[0]:
         print "IsFromServer, ",
     else:
         print "IsFromClient, ",
     
-    if (packet[1]):
+    if packet[1]:
         print "Response, ",
     else:
         print "Request, ",
@@ -148,7 +148,7 @@ def receivePacket(_socket, receiveBuffer):
         #Make sure we raise a socket error when the socket is hanging on a loose end (receiving no data after server restart) 
         if not data:
             raise socket.error('No data received - Remote end unexpectedly closed socket')
-        receiveBuffer += data;
+        receiveBuffer += data
 
     packetSize = DecodeInt32(receiveBuffer[4:8])
 
@@ -162,7 +162,6 @@ class FrostbiteError(Exception): pass
 
 class CommandError(FrostbiteError): pass
 class CommandTimeoutError(CommandError): pass
-class BadPasswordError(CommandError): pass
 class CommandFailedError(CommandError): pass
 
 class NetworkError(FrostbiteError): pass
@@ -277,6 +276,7 @@ class FrostbiteServer(threading.Thread):
     def __init__(self, host, port, password=None, command_timeout=5.0):
         threading.Thread.__init__(self, name="FrosbiteServerThread")
         self.frostbite_dispatcher = FrostbiteDispatcher(host, port)
+        self._stopEvent = threading.Event()
         self.password = password
         self.command_timeout = command_timeout
         self.frostbite_dispatcher.set_frostbite_event_hander(self._on_event)
@@ -284,7 +284,12 @@ class FrostbiteServer(threading.Thread):
         self.pending_commands = {}
         self.__command_reply_event = threading.Event()
         self.observers = set()
-        self.working = True
+        # test connection
+        sock = socket.create_connection((host, port), timeout=2)
+        sock.close()
+        # ok start working
+        self.start()
+        time.sleep(1.5)
 
     #===============================================================================
     # 
@@ -333,9 +338,13 @@ class FrostbiteServer(threading.Thread):
         # Send password hash to server
         self.command("login.hashed", passwordHashHexString)
         self.getLogger().info("authentication done")
-    
+
     def close(self):
         self.frostbite_dispatcher.close()
+
+    def stop(self):
+        self._stopEvent.set()
+        self.close()
     
     #===============================================================================
     # 
@@ -352,12 +361,18 @@ class FrostbiteServer(threading.Thread):
     def getLogger(self):
         return logging.getLogger("FrostbiteServer")
 
+    def isStopped(self):
+        return self._stopEvent.is_set()
+
     def run(self):
         """Threaded code"""
         self.getLogger().info('start loop')
         try:
-            asyncore.loop()
-        except (EOFError, KeyboardInterrupt):
+            while not self.isStopped():
+                asyncore.loop(count=1, timeout=1)
+        except KeyboardInterrupt:
+            pass
+        finally:
             self.frostbite_dispatcher.close()
         self.getLogger().info('end loop')
 
@@ -378,16 +393,21 @@ class FrostbiteServer(threading.Thread):
     def _wait_for_response(self, command_id):
         """block until response to for given command_id has been received or until timeout is reached."""
         expire_time = time.time() + self.command_timeout
-        while command_id in self.pending_commands and self.pending_commands[command_id] is None:
+        while not self.isStopped() and command_id in self.pending_commands and self.pending_commands[command_id] is None:
+            if not self.connected:
+                raise NetworkError("Lost connection to Frostbite2 server")
             if time.time() >= expire_time:
                 del self.pending_commands[command_id]
                 raise CommandTimeoutError("Did not receive any response for sequence #%i." % command_id)
             self.getLogger().debug("waiting for some command reply #%i : %r " % (command_id, self.pending_commands))
             self.__command_reply_event.clear()
             self.__command_reply_event.wait(self.command_timeout)
-        response = self.pending_commands[command_id]
-        del self.pending_commands[command_id]
-        return response
+        try:
+            response = self.pending_commands[command_id]
+            del self.pending_commands[command_id]
+            return response
+        except KeyError:
+            raise CommandTimeoutError("Did not receive any response for sequence #%i." % command_id)
 
 
 
@@ -538,7 +558,7 @@ if __name__ == '__main__':
 
         from random import sample, random
         class CommandRequester(threading.Thread):
-            running = True
+            _stop = threading.Event()
             nb_instances = 0
             def __init__(self, frostbite_server, commands=('serverInfo',), delay=5):
                 self.__class__.nb_instances += 1
@@ -552,7 +572,7 @@ if __name__ == '__main__':
             
             def run(self):
                 self.getLogger().info("starting spamming commands")
-                while self.__class__.running:
+                while not self.__class__._stop.is_set():
                     cmd = sample(self.commands, 1)[0]
                     self.getLogger().info("###\trequesting \t%s" % repr(cmd))
                     try:
@@ -563,14 +583,16 @@ if __name__ == '__main__':
                     time.sleep(self.delay + random())
                 self.getLogger().info("stopped spamming commands")
 
+            @classmethod
+            def stopAll(cls):
+                cls._stop.set()
 
         logging.basicConfig(level=logging.NOTSET, format=FORMAT)
         logging.info("here we go")
                     
         t_conn = FrostbiteServer(host, port, pw)
         t_conn.subscribe(frosbiteEventListener)
-        t_conn.start()
-        
+
 #        try:
 #            t_conn.command('logout')
 #        except CommandError, err:
@@ -614,9 +636,9 @@ if __name__ == '__main__':
 #        time.sleep(.5)
 #        CommandRequester(t_conn, (('login.plainText', 'faux password'), 'login.plainText')).start()
         
-        time.sleep(30)
-        #t_conn.close()
-        CommandRequester.running = False
+        time.sleep(5)
+        t_conn.stop()
+        CommandRequester.stopAll()
         logging.info("here we die")
 
     #run_low_level()
